@@ -1,6 +1,10 @@
 # LabelImage
 LabelImage:
 
+.. image:: https://github.com/sunshine-app/LabelImage/blob/d4e0c1aaf19fc3f92f2a722462e76605d847ec45/mul_images.jpg
+
+.. image:: https://github.com/sunshine-app/LabelImage/blob/d4e0c1aaf19fc3f92f2a722462e76605d847ec45/single_image.jpg
+
     所有文件的编码方式使用utf-8
     增加图片亮度调节滑块
     增加图片大小调节滑块

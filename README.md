@@ -8,7 +8,7 @@ LabelImage:
     选择自定义的classes去标记图片
     连续替换label，将连续的几张图片的第一个标记改为同一类
     自动保存模式下，只要canvas发生变化，都会自动保存
-    增加文件列表提示
+    打开文件夹增加文件列表tips提示
 
 运行方式：
     python labelImg.py

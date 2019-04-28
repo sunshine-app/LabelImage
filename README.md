@@ -38,15 +38,19 @@ LabelImage:
     open: Ctrl+O
     opendir: Ctrl+Shift+O
     changeSavedir: Alt+R
-    openNextImg: Alt+N
-    openPrevImg: Alt+P
+    openNextImg: Alt+X
+    openPrevImg: Alt+Z
     save: Ctrl+S
     close: Alt+Q
-    create: Ctrl+N
+    create: Alt+D
     edit: Ctrl+E
     copy: Ctrl+C
     delete: Delete
     displayAll: Ctrl+H
+	
+修改部分：
+	为方便使用修改快捷键，在自动保存模式下使用将更加方便
+	将打开的文件夹的图片列表按照创建时间排序
 
 
 

@@ -2,7 +2,8 @@
 # @Time    : 2019/2/28 17:20
 # @Author  : shine
 # @File    : adjustLight.py
-from PIL import ImageEnhance, ImageQt
+from PIL import ImageEnhance, ImageQt, Image, ImageStat
+
 
 # enhance(factor)增强器，
 # 这个方法会返回一个被加强过的image对象，
@@ -26,3 +27,9 @@ def adjust_image_light(qimage, factor):
 def add_light(image, factor):
     enhancer = ImageEnhance.Brightness(image)
     return enhancer.enhance(factor)
+
+
+def get_image_mean_light(dst_src):
+    im = Image.open(dst_src).convert('L')
+    stat = ImageStat.Stat(im)
+    return float("%.2f" % stat.mean[0])

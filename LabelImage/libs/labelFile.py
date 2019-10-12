@@ -19,14 +19,14 @@ class LabelFile(object):
         self.imageData = None
         self.verified = False
 
-    def saveYoloFormat(self, filename, shapes, imagePath, classList):
+    def saveYoloFormat(self, filename, shapes, imagePath, classList, margin_pixel):
         imgFolderPath = os.path.dirname(imagePath)
         imgFolderName = os.path.split(imgFolderPath)[-1]
         imgFileName = os.path.basename(imagePath)
         image = QImage()
         image.load(imagePath)
         imageShape = [image.height(), image.width(), 1 if image.isGrayscale() else 3]
-        writer = YOLOWriter(imgFolderName, imgFileName, imageShape, localImgPath=imagePath)
+        writer = YOLOWriter(imgFolderName, imgFileName, imageShape, margin_pixel, localImgPath=imagePath)
         writer.verified = self.verified
         for shape in shapes:
             points = shape['points']

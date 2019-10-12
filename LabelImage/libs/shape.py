@@ -26,12 +26,14 @@ class Shape(object):
     point_size = 8
     scale = 1.0
 
-    def __init__(self, label=None, line_color=None, paintLabel=False):
+    def __init__(self, label=None, line_color=None, paintLabel=False, confidence_level=None):
         self.label = label
         self.points = []
         self.fill = False
         self.selected = False
         self.paintLabel = paintLabel
+        self.whiteLabel = False
+        self.confidence_level = confidence_level
 
         self._highlightIndex = None
         self._highlightMode = self.NEAR_VERTEX
@@ -101,12 +103,21 @@ class Shape(object):
                     font = QFont()
                     font.setPointSize(8)
                     font.setBold(True)
+                    if self.whiteLabel:
+                        label_pen = QPen(QColor(255, 255, 255))
+                        label_pen.setWidth(max(1, int(round(2.0 / self.scale))))
+                        painter.setPen(label_pen)
+
                     painter.setFont(font)
-                    if(self.label == None):
+                    if self.label is None:
                         self.label = ""
-                    if(min_y < MIN_Y_LABEL):
+                    if self.confidence_level is None:
+                        self.confidence_level = ""
+                    if min_y < MIN_Y_LABEL:
                         min_y += MIN_Y_LABEL
-                    painter.drawText(min_x, min_y, self.label)
+                    painter.drawText(min_x, min_y, "{label}--{confidence_level}".format(label=self.label,
+                                    confidence_level=self.confidence_level))
+                    # painter.setPen(pen)
 
             if self.fill:
                 color = self.select_fill_color if self.selected else self.fill_color

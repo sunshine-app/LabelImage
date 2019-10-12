@@ -2,6 +2,7 @@
 import codecs
 import os.path
 import platform
+import shutil
 import sys
 import subprocess
 
@@ -10,7 +11,7 @@ from PyQt5.QtGui import *
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
 # 导入资源文件
-
+from libCustom.label_text import text_is_exist
 from libs.constants import *
 from libs.lib import struct, newAction, newIcon, addActions, generateColorByText
 from libs.settings import Settings
@@ -25,7 +26,8 @@ from libs.yolo_io import YoloReader
 from libs.yolo_io import TXT_EXT
 from libs.version import __version__
 from libs.hashableQListWidgetItem import HashableQListWidgetItem
-from libCustom.adjustLight import adjust_image_light
+from libCustom.adjustLight import adjust_image_light, get_image_mean_light
+from libCustom.mix_name_sort import sort_list_by_name
 
 __appname__ = '标记工具'
 ENCODE_METHOD = DEFAULT_ENCODING
@@ -85,13 +87,6 @@ class MainWindow(QMainWindow, WindowMixin):
         self.screencastViewer = getAvailableScreencastViewer()
         self.screencast = "http://www.wisdom.sh.cn/"
 
-        # 加载默认定义的classes列表
-        self.prefdefClassFile = defaultPrefdefClassFile
-        self.loadPredefinedClasses(defaultPrefdefClassFile)
-
-        # Main widgets and related state.
-        self.labelDialog = LabelDialog(parent=self, listItem=self.labelHist)
-
         self.itemsToShapes = {}
         self.shapesToItems = {}
         self.prevLabelText = ''
@@ -148,29 +143,68 @@ class MainWindow(QMainWindow, WindowMixin):
         adjustZoomContainer = QWidget()
         adjustZoomContainer.setLayout(adjustZoomLayout)
         self.adjustZoomSlider.setEnabled(False)
+        # 扩大标记
+        self.marginPixelLabel = QLabel()
+        self.marginPixelLabel.setObjectName("marginPixelLabel")
+        self.marginPixelLabel.setText("margin pixel")
+        self.margin_pixel_box = QComboBox()
+        for idx in range(10):
+            self.margin_pixel_box.addItem(str(idx + 1))
+        marginPixelLayout = QHBoxLayout()
+        marginPixelLayout.addWidget(self.marginPixelLabel)
+        marginPixelLayout.addWidget(self.margin_pixel_box)
+        self.turnPageLabel = QLabel()
+        self.turnPageLabel.setObjectName("turnPageLabel")
+        self.turnPageLabel.setText("turn page")
+        self.turnPageSpinBox = QSpinBox()
+        self.turnPageSpinBox.setMinimum(1)
+        self.turnPageSpinBox.setValue(10)
+        marginPixelLayout.addWidget(self.turnPageLabel)
+        marginPixelLayout.addWidget(self.turnPageSpinBox)
+        marginPixelContainer = QWidget()
+        marginPixelContainer.setLayout(marginPixelLayout)
+
+        # 白色标签文本显示
+        self.whiteLabelCheckbox = QCheckBox("label add white")
+        self.whiteLabelCheckbox.setChecked(False)
+        # 图片平均参考亮度
+        self.meanLightLabel = QLabel()
+        self.meanLightLabel.setObjectName("meanLightLabel")
+        self.meanLightLabel.setText("参考亮度")
+        self.meanLightTextLine = QLineEdit()
+        self.meanLightTextLine.setReadOnly(True)
+        meanLightQHBoxLayout = QHBoxLayout()
+        meanLightQHBoxLayout.addWidget(self.whiteLabelCheckbox)
+        meanLightQHBoxLayout.addWidget(self.meanLightLabel)
+        meanLightQHBoxLayout.addWidget(self.meanLightTextLine)
+        meanLightContainer = QWidget()
+        meanLightContainer.setLayout(meanLightQHBoxLayout)
+
         # 默认标记
         self.useDefaultLabelCheckbox = QCheckBox(getStr('useDefaultLabel'))
         self.useDefaultLabelCheckbox.setChecked(False)
-        self.defaultLabelTextLine = QLineEdit()
+        self.default_label_box = QComboBox()
         useDefaultLabelQHBoxLayout = QHBoxLayout()
         useDefaultLabelQHBoxLayout.addWidget(self.useDefaultLabelCheckbox)
-        useDefaultLabelQHBoxLayout.addWidget(self.defaultLabelTextLine)
+        useDefaultLabelQHBoxLayout.addWidget(self.default_label_box)
         useDefaultLabelContainer = QWidget()
         useDefaultLabelContainer.setLayout(useDefaultLabelQHBoxLayout)
 
         # 替换标记
         replaceClassesLabelLayout = QHBoxLayout()
-        self.replaceClassesLabelCheckbox = QCheckBox("连续替换 Label")
+        self.replaceClassesLabelCheckbox = QCheckBox("continue replace Label")
         self.replaceClassesLabelCheckbox.setChecked(False)
-        self.replaceClassesLabelTextLine = QLineEdit()
+        self.replace_label_box = QComboBox()
         replaceClassesLabelLayout.addWidget(self.replaceClassesLabelCheckbox)
-        replaceClassesLabelLayout.addWidget(self.replaceClassesLabelTextLine)
+        replaceClassesLabelLayout.addWidget(self.replace_label_box)
         replaceClassesLabelContainer = QWidget()
         replaceClassesLabelContainer.setLayout(replaceClassesLabelLayout)
 
         listLayout.addWidget(classesLabelContainer)
         listLayout.addWidget(adjustLightContainer)
         listLayout.addWidget(adjustZoomContainer)
+        listLayout.addWidget(marginPixelContainer)
+        listLayout.addWidget(meanLightContainer)
         listLayout.addWidget(useDefaultLabelContainer)
         listLayout.addWidget(replaceClassesLabelContainer)
 
@@ -229,28 +263,35 @@ class MainWindow(QMainWindow, WindowMixin):
         self.dockFeatures = QDockWidget.DockWidgetClosable | QDockWidget.DockWidgetFloatable
         self.dock.setFeatures(self.dock.features() ^ self.dockFeatures)
 
+        # 加载默认定义的classes列表
+        self.prefdefClassFile = defaultPrefdefClassFile
+        self.loadPredefinedClasses(defaultPrefdefClassFile)
+
+        # Main widgets and related state.
+        self.labelDialog = LabelDialog(parent=self, listItem=self.labelHist)
+
         # 功能
         action = partial(newAction, self)
-        quit = action(getStr('quit'), self.close,
-                      'Ctrl+Q', 'quit', getStr('quitApp'))
+        quit = action(getStr('quit'), self.close, 'Ctrl+Q', 'quit', getStr('quitApp'))
 
-        open = action(getStr('openFile'), self.openFile,
-                      'Ctrl+O', 'open', getStr('openFileDetail'))
+        open = action(getStr('openFile'), self.openFile, 'Ctrl+O', 'open', getStr('openFileDetail'))
 
-        opendir = action(getStr('openDir'), self.openDirDialog,
-                         'Ctrl+Shift+O', 'open', getStr('openDir'))
+        opendir = action(getStr('openDir'), self.openDirDialog, 'Ctrl+Shift+O', 'open', getStr('openDir'))
 
-        changeSavedir = action(getStr('changeSaveDir'), self.changeSavedirDialog,
-                               'Alt+R', 'open', getStr('changeSavedAnnotationDir'))
+        changeSavedir = action(getStr('changeSaveDir'), self.changeSavedirDialog, 'Alt+R', 'open',
+                               getStr('changeSavedAnnotationDir'))
 
-        openNextImg = action(getStr('nextImg'), self.openNextImg,
-                             'Alt+X', 'next', getStr('nextImgDetail'))
+        openPrevImg = action(getStr('prevImg'), self.openPrevImg, 'Z', 'prev', getStr('prevImgDetail'))
 
-        openPrevImg = action(getStr('prevImg'), self.openPrevImg,
-                             'Alt+Z', 'prev', getStr('prevImgDetail'))
+        openNextImg = action(getStr('nextImg'), self.openNextImg, 'X', 'next', getStr('nextImgDetail'))
 
-        save = action(getStr('save'), self.saveFile,
-                      'Ctrl+S', 'save', getStr('saveDetail'), enabled=False)
+        openPrevLabelImg = action("Prev Label Image", self.openPrevLabelImg, 'Alt+X', 'prev', "image of exist label")
+
+        openNextLabelImg = action("Next Label Image", self.openNextLabelImg, 'Alt+Z', 'next', "image of exist label")
+
+        turnPageNextImg = action("Turn Page", self.turnPageNextImg, 'W', 'next', "turn page")
+
+        save = action(getStr('save'), self.saveFile, 'Ctrl+S', 'save', getStr('saveDetail'), enabled=False)
 
         close = action(getStr('closeCur'), self.closeFile, 'Alt+Q', 'close', getStr('closeCurDetail'))
 
@@ -264,7 +305,7 @@ class MainWindow(QMainWindow, WindowMixin):
 
         create = action(getStr('crtBox'), self.createShape, 'ALT+D', 'new', getStr('crtBoxDetail'), enabled=False)
 
-        edit = action(getStr('editLabel'), self.editLabel, 'Ctrl+E', 'edit', getStr('editLabelDetail'), enabled=False)
+        edit = action(getStr('editLabel'), self.editLabel, 'ALT+E', 'edit', getStr('editLabelDetail'), enabled=False)
 
         delete = action(getStr('delBox'), self.deleteSelectedShape, 'Delete', 'delete', getStr('delBoxDetail'), enabled=False)
 
@@ -312,7 +353,8 @@ class MainWindow(QMainWindow, WindowMixin):
                               shapeLineColor=shapeLineColor, shapeFillColor=shapeFillColor,
                               fileMenuActions=(open, opendir, save, close, resetAll, quit),
                               beginner=(),
-                              editMenu=(color1, self.drawSquaresOption),
+                              editMenu=(color1, self.drawSquaresOption, openPrevLabelImg, openNextLabelImg,
+                                        turnPageNextImg),
                               beginnerContext=(create, edit, copy, delete),
                               onLoadActive=(close, create, createMode, editMode),
                               onShapesPresent=(displayAll, ))
@@ -329,7 +371,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.autoSaving = QAction(getStr('autoSaveMode'), self)
         self.autoSaving.setCheckable(True)
         self.autoSaving.setChecked(settings.get(SETTING_AUTO_SAVE, False))
-        # 可选择单个种类标记模式
+        # 可选择单个类别标记模式
         self.singleClassMode = QAction(getStr('singleClsMode'), self)
         self.singleClassMode.setShortcut("Ctrl+Shift+S")
         self.singleClassMode.setCheckable(True)
@@ -392,7 +434,8 @@ class MainWindow(QMainWindow, WindowMixin):
         saveDir = str(settings.get(SETTING_SAVE_DIR, None))
         self.lastOpenDir = str(settings.get(SETTING_LAST_OPEN_DIR, None))
         if self.defaultSaveDir is None and saveDir is not None and os.path.exists(saveDir):
-            self.defaultSaveDir = saveDir
+            # self.defaultSaveDir = saveDir
+            self.defaultSaveDir = None
             self.statusBar().showMessage('%s started. Annotation will be saved to %s' %
                                          (__appname__, self.defaultSaveDir))
             self.statusBar().show()
@@ -406,6 +449,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.updateFileMenu()
 
         # Since loading the file may take some time, make sure it runs in the background.
+        # 打开默认文件夹或默认文件
         if self.filePath and os.path.isdir(self.filePath):
             self.queueEvent(partial(self.importDirImages, self.filePath or ""))
         elif self.filePath:
@@ -416,10 +460,6 @@ class MainWindow(QMainWindow, WindowMixin):
         # 在状态栏右侧显示光标坐标
         self.labelCoordinates = QLabel('')
         self.statusBar().addPermanentWidget(self.labelCoordinates)
-
-        # 打开默认文件夹（不为None）
-        if self.filePath and os.path.isdir(self.filePath):
-            self.openDirDialog()
 
     def chooseClasses(self):
         file_choose = QFileDialog.getOpenFileName(self, "选取classes文件", ".", "Text Files (*.txt)")
@@ -434,7 +474,7 @@ class MainWindow(QMainWindow, WindowMixin):
     def replaceClass(self):
         try:
             if self.replaceClassesLabelCheckbox.isChecked():
-                replace_class_text = self.replaceClassesLabelTextLine.text()
+                replace_class_text = self.replace_label_box.currentText()
             else:
                 replace_class_text = None
             if replace_class_text is not None and len(str(replace_class_text)) > 0:
@@ -602,6 +642,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.actions.shapeFillColor.setEnabled(selected)
 
     def addLabel(self, shape):
+        shape.whiteLabel = self.whiteLabelCheckbox.isChecked()
         shape.paintLabel = self.displayLabelOption.isChecked()
         item = HashableQListWidgetItem(shape.label)
         item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
@@ -624,8 +665,8 @@ class MainWindow(QMainWindow, WindowMixin):
 
     def loadLabels(self, shapes):
         s = []
-        for label, points, line_color, fill_color in shapes:
-            shape = Shape(label=label)
+        for label, points, line_color, fill_color, confidence_level in shapes:
+            shape = Shape(label=label, confidence_level=confidence_level)
             for x, y in points:
                 shape.addPoint(QPointF(x, y))
             shape.close()
@@ -661,7 +702,8 @@ class MainWindow(QMainWindow, WindowMixin):
         try:
             if annotationFilePath[-4:].lower() != ".txt":
                 annotationFilePath += TXT_EXT
-            self.labelFile.saveYoloFormat(annotationFilePath, shapes, self.filePath, self.labelHist)
+            margin_pixel = int(self.margin_pixel_box.currentText())
+            self.labelFile.saveYoloFormat(annotationFilePath, shapes, self.filePath, self.labelHist, margin_pixel)
             print('Image:{0} -> Annotation:{1}'.format(self.filePath, annotationFilePath))
             return True
         except LabelFileError as e:
@@ -694,14 +736,14 @@ class MainWindow(QMainWindow, WindowMixin):
         """Pop-up and give focus to the label editor.
         position MUST be in global coordinates.
         """
-        if not self.useDefaultLabelCheckbox.isChecked() or not self.defaultLabelTextLine.text():
+        if not self.useDefaultLabelCheckbox.isChecked():
             if self.singleClassMode.isChecked() and self.lastLabel:
                 text = self.lastLabel
             else:
                 text = self.labelDialog.popUp(text=self.prevLabelText)
                 self.lastLabel = text
         else:
-            text = self.defaultLabelTextLine.text()
+            text = self.default_label_box.currentText()
 
         if text is not None:
             self.prevLabelText = text
@@ -823,6 +865,8 @@ class MainWindow(QMainWindow, WindowMixin):
                 self.canvas.verified = False
 
             image = QImage.fromData(imageData)
+            mean_light = get_image_mean_light(unicodeFilePath)
+            self.meanLightTextLine.setText("{mean_light}".format(mean_light=mean_light))
             if image.isNull():
                 self.errorMessage(u'Error opening file',
                                   u"<p>Make sure <i>%s</i> is a valid image file." % unicodeFilePath)
@@ -838,7 +882,7 @@ class MainWindow(QMainWindow, WindowMixin):
                 self.loadLabels(self.labelFile.shapes)
             self.setClean()
             self.canvas.setEnabled(True)
-            self.adjustScale()
+            # self.adjustScale()
             self.paintCanvas()
             self.addRecentFile(self.filePath)
             self.toggleActions(True)
@@ -881,7 +925,7 @@ class MainWindow(QMainWindow, WindowMixin):
         zoom_slider_value = int(100 * value)
         self.adjustZoomSlider.setValue(zoom_slider_value)
         self.adjustZoomNumLabel.setText(str.format("{value} %", value=zoom_slider_value))
-        self.adjustZoomSlider.setValue(int(100 * value))
+        # self.adjustZoomSlider.setValue(int(100 * value))
 
     def scaleFitWindow(self):
         """Figure out the size of the pixmap in order to fit the main widget."""
@@ -947,10 +991,7 @@ class MainWindow(QMainWindow, WindowMixin):
                     relativePath = os.path.join(root, file)
                     path = str(os.path.abspath(relativePath))
                     images.append(path)
-        # images.sort(key=lambda x: x.lower())
-        # 按创建时间排序
-        images.sort(key=lambda x: os.path.getmtime(x))
-        return images
+        return sort_list_by_name(images)
 
     def changeSavedirDialog(self, _value=False):
         if self.defaultSaveDir is not None:
@@ -996,15 +1037,20 @@ class MainWindow(QMainWindow, WindowMixin):
         self.openNextImg()
         for imgPath in self.mImgList:
             item = QListWidgetItem(imgPath)
+            if self.is_exist_label(imgPath):
+                item.setBackground(QColor(255, 251, 100, 100))
             self.fileListWidget.addItem(item)
+
+    @staticmethod
+    def is_exist_label(imgPath):
+        imgText = str(imgPath).replace('png', 'txt')
+        return os.path.exists(imgText)
 
     def openPrevImg(self, _value=False):
         if not self.mayContinue():
             return
-
         if len(self.mImgList) <= 0:
             return
-
         if self.filePath is None:
             return
 
@@ -1019,10 +1065,8 @@ class MainWindow(QMainWindow, WindowMixin):
     def openNextImg(self, _value=False):
         if not self.mayContinue():
             return
-
         if len(self.mImgList) <= 0:
             return
-
         filename = None
         if self.filePath is None:
             filename = self.mImgList[0]
@@ -1036,6 +1080,73 @@ class MainWindow(QMainWindow, WindowMixin):
             light_value = self.adjustLightSlider.value()
             self.adjustLight(light_value)
             self.replaceClass()
+            self.canvas.update()
+            self.createShape()
+
+    def openPrevLabelImg(self):
+        if not self.mayContinue():
+            return
+        if len(self.mImgList) <= 0:
+            return
+        if self.filePath is None:
+            return
+        filename = None
+        currIndex = self.mImgList.index(self.filePath)
+        for lidx in range(currIndex-1, 1, -1):
+            filename = self.mImgList[lidx]
+            if text_is_exist(filename, TXT_EXT):
+                break
+            continue
+        if text_is_exist(filename, TXT_EXT):
+            self.loadFile(filename)
+            light_value = self.adjustLightSlider.value()
+            self.adjustLight(light_value)
+
+    def openNextLabelImg(self):
+        if not self.mayContinue():
+            return
+        if len(self.mImgList) <= 0:
+            return
+        if self.filePath is None:
+            return
+        filename = None
+        currIndex = self.mImgList.index(self.filePath)
+        for lidx in range(currIndex+1, len(self.mImgList)):
+            filename = self.mImgList[lidx]
+            if text_is_exist(filename, TXT_EXT):
+                break
+            continue
+        if text_is_exist(filename, TXT_EXT):
+            self.loadFile(filename)
+            light_value = self.adjustLightSlider.value()
+            self.adjustLight(light_value)
+            self.replaceClass()
+            self.canvas.update()
+            self.createShape()
+
+    def turnPageNextImg(self):
+        if not self.mayContinue():
+            return
+        if len(self.mImgList) <= 0:
+            return
+        filename = None
+        if self.filePath is None:
+            filename = self.mImgList[0]
+        else:
+            currIndex = self.mImgList.index(self.filePath)
+            turnPageNum = self.turnPageSpinBox.value()
+            if currIndex + turnPageNum < len(self.mImgList):
+                filename = self.mImgList[currIndex + turnPageNum]
+            else:
+                filename = self.mImgList[len(self.mImgList)-1]
+
+        if filename:
+            self.loadFile(filename)
+            light_value = self.adjustLightSlider.value()
+            self.adjustLight(light_value)
+            self.replaceClass()
+            self.canvas.update()
+            self.createShape()
 
     def openFile(self, _value=False):
         try:
@@ -1053,19 +1164,19 @@ class MainWindow(QMainWindow, WindowMixin):
             print(ex)
 
     def saveFile(self, _value=False):
+        imgFileDir = os.path.dirname(self.filePath)
+        imgFileName = os.path.basename(self.filePath)
+        savedFileName = os.path.splitext(imgFileName)[0]
+        savedPath = os.path.join(imgFileDir, savedFileName)
+        self._saveFile(savedPath if self.labelFile
+                       else self.saveFileDialog(removeTxt=False))
         if self.defaultSaveDir is not None and len(str(self.defaultSaveDir)):
             if self.filePath:
                 imgFileName = os.path.basename(self.filePath)
                 savedFileName = os.path.splitext(imgFileName)[0]
-                savedPath = os.path.join(str(self.defaultSaveDir), savedFileName)
-                self._saveFile(savedPath)
-        else:
-            imgFileDir = os.path.dirname(self.filePath)
-            imgFileName = os.path.basename(self.filePath)
-            savedFileName = os.path.splitext(imgFileName)[0]
-            savedPath = os.path.join(imgFileDir, savedFileName)
-            self._saveFile(savedPath if self.labelFile
-                           else self.saveFileDialog(removeTxt=False))
+                defaultSavedPath = os.path.join(str(self.defaultSaveDir), savedFileName)
+                self._saveFile(defaultSavedPath)
+                shutil.copy(savedPath + '.png', defaultSavedPath + '.png')
 
     def saveFileDialog(self, removeTxt=True):
         caption = '%s - Choose File' % __appname__
@@ -1099,6 +1210,14 @@ class MainWindow(QMainWindow, WindowMixin):
                 savedFileName = os.path.splitext(imgFileName)[0]
                 savedPath = os.path.join(imgFileDir, savedFileName)
                 self._saveFile(savedPath)
+                if self.defaultSaveDir is not None and len(str(self.defaultSaveDir)):
+                    if self.filePath:
+                        imgFileName = os.path.basename(self.filePath)
+                        savedFileName = os.path.splitext(imgFileName)[0]
+                        defaultSavedPath = os.path.join(str(self.defaultSaveDir), savedFileName)
+                        self._saveFile(defaultSavedPath)
+                        print(savedPath, defaultSavedPath)
+                        shutil.copy(savedPath + '.png', defaultSavedPath + '.png')
         else:
             pass
 
@@ -1187,6 +1306,14 @@ class MainWindow(QMainWindow, WindowMixin):
                         self.labelHist = [line]
                     else:
                         self.labelHist.append(line)
+                self.load_combox_label()
+
+    def load_combox_label(self):
+        self.replace_label_box.clear()
+        self.default_label_box.clear()
+        for idx in range(len(self.labelHist)):
+            self.replace_label_box.addItem(self.labelHist[idx])
+            self.default_label_box.addItem(self.labelHist[idx])
 
     def loadYOLOTXTByFilename(self, txtPath):
         if self.filePath is None:
@@ -1195,13 +1322,25 @@ class MainWindow(QMainWindow, WindowMixin):
             return
 
         LabelFile.suffix = TXT_EXT
-        tYoloParseReader = YoloReader(txtPath, self.image)
+
+        classes_path = os.path.join(os.path.dirname(os.path.realpath(txtPath)), "classes.txt")
+        if not os.path.exists(classes_path):
+            yes, no = QMessageBox.Yes, QMessageBox.No
+            msg = u"当前路径下不存在classes.txt文件，是否拷贝默认文件到当前目录下"
+            if yes == QMessageBox.warning(self, u'classes文件选择', msg, yes | no):
+                shutil.copyfile(os.path.dirname(os.path.realpath(__file__)) + "/data/predefined_classes.txt", classes_path)
+            else:
+                self.chooseClasses()
+                shutil.copyfile(self.prefdefClassFile, classes_path)
+
+        tYoloParseReader = YoloReader(txtPath, self.image, classes_path)
         shapes = tYoloParseReader.getShapes()
         self.loadLabels(shapes)
         self.canvas.verified = tYoloParseReader.verified
 
     def togglePaintLabelsOption(self):
         for shape in self.canvas.shapes:
+            shape.whiteLabel = self.whiteLabelCheckbox.isChecked()
             shape.paintLabel = self.displayLabelOption.isChecked()
 
     def toogleDrawSquare(self):

@@ -1,4 +1,4 @@
-LabelImage:
+# LabelImage:
     所有文件的编码方式使用utf-8
     增加图片亮度调节滑块
     增加图片大小调节滑块
@@ -11,13 +11,13 @@ LabelImage:
     显示标记的文字描述
     增加文件列表提示
 
-运行方式：
+## 运行方式：
     python labelImg.py
 
-环境依赖：
+## 环境依赖：
     Python3 + PyQt5 + Pillow + lxml
 
-说明：
+## 说明：
     predefined_classes.txt在项目data目录下
     txt文本文档使用标准utf-8格式，即无BOM的utf-8
     在类别存在中文的情况下，一定要使predefined_classes.txt的格式为无BOM的utf-8格式
@@ -34,7 +34,7 @@ LabelImage:
     openPrevLabelImg：打开上一张有标记的图片
     openNextLabelImg：打开下一张有标记的图片
 
-快捷键:
+## 快捷键:
     quit: Ctrl+Q
     open: Ctrl+O
     opendir: Ctrl+Shift+O
@@ -51,3 +51,4 @@ LabelImage:
     copy: Ctrl+C
     delete: Delete
     displayAll: Ctrl+H
+![image](img/s0.jpg)![image](img/s1.jpg)
